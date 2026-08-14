@@ -1,0 +1,87 @@
+# =====================================================================
+# Safety Classifier config (REINS Appendix C.2 reproduction)
+# 所有路径均可被命令行参数覆盖；不要在此硬编码本地绝对路径。
+# =====================================================================
+
+# ---- 实验标识 ----
+experiment_name: "safesora_safety_classifier"
+seed: 42
+
+# ---- 数据 ----
+data:
+  dataset: "safesora"            # "safesora" | "safewatch"
+  label_mapping: "configs/labels_safesora.json"   # 类别名外置，不进模型
+  # SafeSora / SafeWatch 的 annotation 文件 (jsonl/csv) 与视频根目录
+  train_annotation: null         # e.g. "data/safesora/train.jsonl"
+  test_annotation:  null         # e.g. "data/safesora/test.jsonl"
+  video_root: null               # 视频根目录，annotation 中的相对路径会拼到此目录
+  num_workers: 4
+  per_device_batch_size: 16      # 论文: 16 videos / device  => 16*8=128 frames/step
+  pin_memory: true
+
+# ---- 视频读取 / 采样 ----
+video:
+  num_frames: 8                  # T=8, configurable
+  sampling: "uniform"            # "uniform" | "random"
+  short_clip_strategy: "loop"    # 帧数 < T 时: "loop" | "last" | "first_last"
+  decode_backend: "av"           # "av" | "decord" | "opencv"
+  max_decode_attempts: 2
+
+# ---- 视觉 backbone (SigLIP) ----
+backbone:
+  model_name: "google/siglip-base-patch16-224"   # d=768
+  hidden_dim: 768                # 必须与 checkpoint 的 vision hidden_size 一致
+  image_size: 224
+  feature_source: "patch_mean"   # "patch_mean" | "pooler_output" | "cls_token"
+                                 # patch_mean: last_hidden_state 在 patch 维 mean -> (T,d)
+                                 #   (SigLIP 无 CLS token; cls_token 仅供其它 backbone 兼容)
+  freeze: true                   # 论文: 冻结, eval mode, no_grad
+  dtype: "float32"               # SigLIP 推理精度 (autocast 会再降)
+
+# ---- Temporal Transformer ----
+temporal:
+  num_layers: 4
+  num_heads: 8
+  hidden_dim: 768
+  mlp_ratio: 4
+  activation: "gelu"
+  dropout: 0.1
+  pos_encoding: "sinusoidal"     # 论文: sinusoidal, 不允许替换为可学习
+
+# ---- 分类头 ----
+head:
+  num_classes: 13                # SafeSora: 13 (safe + 12); SafeWatch: 7
+  threshold: 0.5                 # 推理时 per-class 二值化阈值 (configurable)
+
+# ---- Loss ----
+loss:
+  name: "bce_with_logits"        # multi-label, 不预先 sigmoid
+
+# ---- 优化 (论文 Appendix C.2) ----
+optim:
+  optimizer: "adamw"
+  lr_per_gpu: 1.0e-5             # 1e-5 / GPU
+  scale_lr_by_world_size: true   # DDP: lr = lr_per_gpu * world_size
+  betas: [0.9, 0.999]
+  weight_decay: 1.0e-2
+  grad_clip: 1.0                 # max L2 norm = 1.0
+  epochs: 10
+  warmup_epochs: 1               # first 1 epoch linear warmup
+  lr_schedule: "cosine"          # warmup + cosine decay
+  amp: true                      # autocast mixed precision
+
+# ---- 训练控制 ----
+train:
+  output_dir: "outputs/${experiment_name}"
+  log_every: 20
+  save_top_k: 1                  # 按 best accuracy 保存
+  selection_metric: "accuracy"   # 在 held-out test split 上选 best
+  resume: null                   # checkpoint 路径, 支持 resume
+  ddp: false                     # 命令行 --ddp 时覆盖
+  sanity_check: false            # 仅做 sanity check 不训练
+
+# ---- Evaluation ----
+eval:
+  per_class: true
+  compute_auroc: true
+  compute_auprc: true

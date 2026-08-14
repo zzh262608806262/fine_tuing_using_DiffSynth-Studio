@@ -1,0 +1,13 @@
+{
+  "_comment": "SafeWatch-Bench 7 labels: safe + 6 unsafe categories (C1-C6 折叠为统一 multi-label)。如你的标注 ID 不同，请直接修改本文件。",
+  "num_classes": 7,
+  "label_names": [
+    "safe",
+    "c1_violence",
+    "c2_nudity_sexual",
+    "c3_horror_gory",
+    "c4_substance_abuse",
+    "c5_hate_symbol",
+    "c6_other_unsafe"
+  ]
+}

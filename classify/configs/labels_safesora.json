@@ -1,0 +1,19 @@
+{
+  "_comment": "SafeSora 13 labels: safe + 12 harm tags (S1-S12). 类别索引即 multi-hot 向量下标。如与你的数据集标注不一致，请直接修改本文件，无需改动模型代码。",
+  "num_classes": 13,
+  "label_names": [
+    "safe",
+    "adult_explicit_sexual_content",
+    "animal_abuse",
+    "child_abuse",
+    "crime",
+    "economic_crime",
+    "hate_speech",
+    "insulting_hateful_aggressive_behavior",
+    "violence_injury_gory_content",
+    "racial_discrimination",
+    "other_discrimination_excluding_racial",
+    "terrorism_organized_crime",
+    "other_harmful_content"
+  ]
+}
