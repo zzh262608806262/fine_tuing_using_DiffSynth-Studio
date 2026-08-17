@@ -33,8 +33,13 @@ def save_checkpoint(
     label_names,
     seed: int,
     scaler: Optional["torch.cuda.amp.GradScaler"] = None,
+    batch_step: Optional[int] = None,
 ) -> None:
-    """仅 main process 保存. DDP 时 model 需 unwrap."""
+    """仅 main process 保存. DDP 时 model 需 unwrap.
+
+    batch_step: 若非 None, 表示 mid-epoch checkpoint, 值为当前 epoch 内已完成的
+    batch 数 (resume 时从该 batch 继续); None 表示 epoch 结束时的 checkpoint.
+    """
     if not is_main_process():
         return
     path = Path(path)
@@ -46,12 +51,16 @@ def save_checkpoint(
         "scheduler_state_dict": scheduler.state_dict() if scheduler is not None else None,
         "scaler_state_dict": scaler.state_dict() if scaler is not None else None,
         "epoch": epoch,
+        "batch_step": batch_step,
         "best_metric": best_metric,
         "config": config,
         "label_names": list(label_names),
         "seed": seed,
     }
-    torch.save(ckpt, path)
+    # 原子写入: 防止半途被 kill 留下损坏的 checkpoint
+    tmp_path = str(path) + ".tmp"
+    torch.save(ckpt, tmp_path)
+    os.replace(tmp_path, path)
     # 同名 sidecar json, 便于人工查看
     meta = {k: v for k, v in ckpt.items() if k not in ("model_state_dict", "optimizer_state_dict",
                                                         "scheduler_state_dict", "scaler_state_dict")}

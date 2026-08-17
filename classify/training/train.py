@@ -1,18 +1,18 @@
 """Safety Classifier 训练入口 (REINS Appendix C.2).
 
 用法 (单卡):
-  python -m diffsynth.classify.training.train \
-      --config diffsynth/classify/configs/safety_classifier.yaml \
+  python -m classify.training.train \
+      --config classify/configs/safety_classifier.yaml \
       --data.train_annotation data/safesora/train.jsonl \
       --data.test_annotation  data/safesora/test.jsonl \
       --data.video_root /path/to/videos
 
 DDP (torchrun):
-  torchrun --nproc_per_node=2 -m diffsynth.classify.training.train \
+  torchrun --nproc_per_node=2 -m classify.training.train \
       --config ... --optim.amp true --train.ddp true ...
 
 sanity check (不训练, 只跑 shape/冻结/NaN 校验):
-  python -m diffsynth.classify.training.train --config ... --train.sanity_check true ...
+  python -m classify.training.train --config ... --train.sanity_check true ...
 """
 from __future__ import annotations
 
@@ -27,19 +27,19 @@ from typing import Any, Dict
 import torch
 import torch.nn as nn
 
-# 让 `python -m diffsynth.classify.training.train` 与直接运行都能 import
+# 让 `python -m classify.training.train` 与直接运行都能 import
 _THIS_DIR = Path(__file__).resolve()
 for _p in [_THIS_DIR.parents[3], _THIS_DIR.parents[2]]:
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from diffsynth.classify.factory import (
+from classify.factory import (
     build_model, build_transform, build_dataset, build_dataloader,
     build_optimizer, build_scheduler,
 )
-from diffsynth.classify.training.losses import BCEWithLogitsLoss
-from diffsynth.classify.evaluation.metrics import compute_multilabel_metrics
-from diffsynth.classify.utils import (
+from classify.training.losses import BCEWithLogitsLoss
+from classify.evaluation.metrics import compute_multilabel_metrics
+from classify.utils import (
     set_seed, get_logger, configure_file_logger, log_json,
     load_yaml, apply_cli_overrides, is_main_process, get_world_size, barrier,
     save_checkpoint, load_checkpoint,
@@ -198,14 +198,27 @@ def train(cfg: Dict) -> None:
     loss_fn = BCEWithLogitsLoss()
 
     # ---- resume ----
+    # epoch 末 checkpoint (batch_step=None): 从下一个 epoch 开始
+    # mid-epoch checkpoint (batch_step=k):   重放同 epoch 的确定性顺序, 跳过前 k 个 batch
     start_epoch = 0
     best_metric = -1.0
+    resume_batch_step = 0
     if cfg["train"].get("resume"):
         meta = load_checkpoint(cfg["train"]["resume"], model, optimizer, scheduler, scaler,
                                map_location="cpu")
-        start_epoch = int(meta.get("epoch", 0)) + 1
         best_metric = float(meta.get("best_metric", -1.0))
-        logger.info(f"Resumed from {cfg['train']['resume']}: epoch={start_epoch}, best={best_metric}")
+        batch_step = meta.get("batch_step")
+        if batch_step:
+            start_epoch = int(meta.get("epoch", 0))
+            resume_batch_step = int(batch_step)
+            if distributed:
+                # DistributedSampler 不支持样本级跳过, DDP 下退化为 epoch 级 resume
+                logger.warning("DDP 下不支持 step 级 resume, 从该 epoch 开头重训")
+                resume_batch_step = 0
+        else:
+            start_epoch = int(meta.get("epoch", 0)) + 1
+        logger.info(f"Resumed from {cfg['train']['resume']}: epoch={start_epoch}, "
+                    f"batch_step={resume_batch_step}, best={best_metric}")
 
     # ---- sanity check ----
     if cfg["train"].get("sanity_check"):
@@ -219,15 +232,23 @@ def train(cfg: Dict) -> None:
     selection_metric = cfg["train"].get("selection_metric", "accuracy")
     epochs = int(cfg["optim"]["epochs"])
     log_every = int(cfg["train"].get("log_every", 20))
+    save_every_steps = int(cfg["train"].get("save_every_steps", 0))  # 0 = 关闭 mid-epoch 保存
+    bs = int(cfg["data"]["per_device_batch_size"])
+    seed = int(cfg.get("seed", 42))
+    last_path = os.path.join(cfg["train"]["output_dir"], "last.pt")
 
     for epoch in range(start_epoch, epochs):
-        if distributed and hasattr(train_loader.sampler, "set_epoch"):
+        if hasattr(train_loader.sampler, "set_epoch"):
             train_loader.sampler.set_epoch(epoch)
+        # step 级 resume: 只在续跑的第一个 epoch 跳过已训过的 batch
+        skip_batches = resume_batch_step if epoch == start_epoch else 0
+        if hasattr(train_loader.sampler, "set_skip"):
+            train_loader.sampler.set_skip(skip_batches * bs)
         model.train()
         t0 = time.time()
         running_loss = 0.0
         n_step = 0
-        for step, batch in enumerate(train_loader):
+        for step, batch in enumerate(train_loader, start=skip_batches):
             if batch.get("empty"):
                 continue
             frames = batch["frames"].to(device, non_blocking=True)
@@ -250,6 +271,14 @@ def train(cfg: Dict) -> None:
                 lr = optimizer.param_groups[0]["lr"]
                 logger.info(f"epoch {epoch} step {step}/{steps_per_epoch} "
                             f"loss={float(loss):.4f} lr={lr:.2e}")
+            # mid-epoch checkpoint (step 级断点续跑; 中断最多丢 save_every_steps 步)
+            if (save_every_steps > 0 and not distributed and is_main_process()
+                    and (step + 1) % save_every_steps == 0 and (step + 1) < steps_per_epoch):
+                save_checkpoint(
+                    last_path, model, optimizer, scheduler, epoch, best_metric,
+                    cfg, label_names, seed, scaler, batch_step=step + 1,
+                )
+                logger.info(f"[mid-epoch ckpt] epoch {epoch} batch_step={step + 1} -> {last_path}")
         barrier()
         train_loss = running_loss / max(1, n_step)
 
@@ -281,12 +310,11 @@ def train(cfg: Dict) -> None:
                     cfg, label_names, int(cfg.get("seed", 42)), scaler,
                 )
                 logger.info(f"[best] epoch {epoch} {selection_metric}={cur_metric:.4f} -> {ckpt_path}")
-            # 始终保存 last (便于 resume)
-            last_path = os.path.join(cfg["train"]["output_dir"], "last.pt")
+            # 始终保存 last (便于 resume; batch_step=None 表示该 epoch 已完成)
             save_checkpoint(
                 last_path, model.module if distributed else model,
                 optimizer, scheduler, epoch, best_metric,
-                cfg, label_names, int(cfg.get("seed", 42)), scaler,
+                cfg, label_names, seed, scaler, batch_step=None,
             )
         barrier()
 
@@ -300,9 +328,12 @@ def train(cfg: Dict) -> None:
 # =====================================================================
 def parse_args():
     p = argparse.ArgumentParser(description="Safety Classifier training (REINS Appendix C.2)")
-    p.add_argument("--config", type=str, default="diffsynth/classify/configs/safety_classifier.yaml")
-    p.add_argument("overrides", nargs="*", help="key value 覆盖, e.g. data.per_device_batch_size 8")
-    return p.parse_args()
+    p.add_argument("--config", type=str, default="classify/configs/safety_classifier.yaml")
+    # 覆盖项 (--data.xxx value) 不注册进 argparse, 统一从 unknown 里取,
+    # 避免 argparse 把值吞成 positional 导致 flag/值配对错乱
+    args, unknown = p.parse_known_args()
+    args.overrides = list(unknown)
+    return args
 
 
 def main():

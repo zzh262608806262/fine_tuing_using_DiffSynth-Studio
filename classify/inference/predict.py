@@ -1,7 +1,7 @@
 """Safety Classifier 推理: 单视频 CLI + 批量 API (REINS 兼容).
 
 CLI 用法:
-  python -m diffsynth.classify.inference.predict \
+  python -m classify.inference.predict \
       --video path/to/video.mp4 \
       --checkpoint outputs/safesora/best.pt
 
@@ -36,9 +36,9 @@ for _p in [_THIS_DIR.parents[3], _THIS_DIR.parents[2]]:
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from diffsynth.classify.factory import build_model, build_transform, build_sampler
-from diffsynth.classify.datasets.video_dataset import load_video_frames
-from diffsynth.classify.utils import get_logger, set_seed
+from classify.factory import build_model, build_transform, build_sampler
+from classify.datasets.video_dataset import load_video_frames
+from classify.utils import get_logger, set_seed
 
 
 class SafetyPredictor:

@@ -208,7 +208,7 @@ def mode_save(args):
     print(f"模型配置已保存: {config_path}")
 
     # 显存占用对比
-    total_elements = sum(t.numel() for t in tensors)
+    total_elements = sum(t.numel() for t in tensors.values())
     print(f"量化后总参数量: {total_elements / 1e6:.1f}M elements")
 
 

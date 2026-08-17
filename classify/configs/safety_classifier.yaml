@@ -10,7 +10,7 @@ seed: 42
 # ---- 数据 ----
 data:
   dataset: "safesora"            # "safesora" | "safewatch"
-  label_mapping: "configs/labels_safesora.json"   # 类别名外置，不进模型
+  label_mapping: "classify/configs/labels_safesora.json"   # 类别名外置，不进模型 (相对仓库根目录)
   # SafeSora / SafeWatch 的 annotation 文件 (jsonl/csv) 与视频根目录
   train_annotation: null         # e.g. "data/safesora/train.jsonl"
   test_annotation:  null         # e.g. "data/safesora/test.jsonl"
@@ -76,7 +76,8 @@ train:
   log_every: 20
   save_top_k: 1                  # 按 best accuracy 保存
   selection_metric: "accuracy"   # 在 held-out test split 上选 best
-  resume: null                   # checkpoint 路径, 支持 resume
+  resume: null                   # checkpoint 路径, 支持 resume (epoch 级与 step 级)
+  save_every_steps: 200          # 每 N 步保存 mid-epoch last.pt (step 级断点续跑); 0 关闭
   ddp: false                     # 命令行 --ddp 时覆盖
   sanity_check: false            # 仅做 sanity check 不训练
 

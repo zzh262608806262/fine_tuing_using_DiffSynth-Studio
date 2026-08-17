@@ -1,7 +1,7 @@
 """独立评估入口: 在 test split 上跑全部指标, 输出 overall + per-class.
 
 用法:
-  python -m diffsynth.classify.evaluation.evaluate \
+  python -m classify.evaluation.evaluate \
       --checkpoint outputs/safesora/best.pt \
       --test_annotation data/safesora/test.jsonl \
       --video_root /path/to/videos \
@@ -21,9 +21,9 @@ for _p in [_THIS_DIR.parents[3], _THIS_DIR.parents[2]]:
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from diffsynth.classify.factory import build_model, build_transform, build_dataset, build_dataloader
-from diffsynth.classify.utils import get_logger, set_seed
-from diffsynth.classify.evaluation.metrics import compute_multilabel_metrics
+from classify.factory import build_model, build_transform, build_dataset, build_dataloader
+from classify.utils import get_logger, set_seed
+from classify.evaluation.metrics import compute_multilabel_metrics
 
 
 @torch.no_grad()

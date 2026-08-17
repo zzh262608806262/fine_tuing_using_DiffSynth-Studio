@@ -76,6 +76,35 @@ def build_dataset(cfg: Dict, annotation_path: str, transform: VideoTransform,
     )
 
 
+class DeterministicShuffleSampler(torch.utils.data.Sampler):
+    """按 (seed, epoch) 确定性 shuffle 的 sampler, 支持跳过前 skip 个样本.
+
+    用于 step 级断点续跑: resume 时用相同 seed+epoch 重放当轮的样本顺序,
+    并跳过已训过的前 k*batch_size 个样本, 从中断的 batch 继续.
+    """
+
+    def __init__(self, data_len: int, seed: int) -> None:
+        self.data_len = data_len
+        self.seed = seed
+        self.epoch = 0
+        self.skip = 0  # 以样本数计
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = int(epoch)
+
+    def set_skip(self, num_samples: int) -> None:
+        self.skip = int(num_samples)
+
+    def __iter__(self):
+        g = torch.Generator()
+        g.manual_seed(self.seed * 100003 + self.epoch)
+        order = torch.randperm(self.data_len, generator=g).tolist()
+        return iter(order[self.skip:])
+
+    def __len__(self) -> int:
+        return self.data_len - self.skip
+
+
 def build_dataloader(dataset: VideoDataset, cfg: Dict, train: bool,
                      distributed: bool = False) -> DataLoader:
     data_cfg = cfg["data"]
@@ -85,10 +114,13 @@ def build_dataloader(dataset: VideoDataset, cfg: Dict, train: bool,
         sampler = torch.utils.data.distributed.DistributedSampler(
             dataset, shuffle=train, drop_last=train
         )
+    elif train:
+        # 非 DDP 训练: 确定性 shuffle, 支持 step 级 resume
+        sampler = DeterministicShuffleSampler(len(dataset), int(cfg.get("seed", 42)))
     return DataLoader(
         dataset,
         batch_size=bs,
-        shuffle=(train and sampler is None),
+        shuffle=False,
         sampler=sampler,
         num_workers=data_cfg.get("num_workers", 4),
         pin_memory=data_cfg.get("pin_memory", True),

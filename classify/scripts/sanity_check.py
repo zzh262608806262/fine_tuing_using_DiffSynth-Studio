@@ -3,8 +3,8 @@
 包含 train.py --sanity_check 的全部校验 + 帧采样可视化.
 
 用法:
-  python -m diffsynth.classify.scripts.sanity_check \
-      --config diffsynth/classify/configs/safety_classifier.yaml \
+  python -m classify.scripts.sanity_check \
+      --config classify/configs/safety_classifier.yaml \
       --data.train_annotation data/safesora/train.jsonl \
       --data.video_root /path/to/videos \
       --out_dir outputs/sanity
@@ -25,12 +25,12 @@ for _p in [_THIS_DIR.parents[4], _THIS_DIR.parents[3]]:
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from diffsynth.classify.factory import (
+from classify.factory import (
     build_model, build_transform, build_dataset, build_dataloader,
 )
-from diffsynth.classify.datasets.video_dataset import load_video_frames
-from diffsynth.classify.utils import set_seed, get_logger, load_yaml, apply_cli_overrides
-from diffsynth.classify.training.train import run_sanity_checks
+from classify.datasets.video_dataset import load_video_frames
+from classify.utils import set_seed, get_logger, load_yaml, apply_cli_overrides
+from classify.training.train import run_sanity_checks
 
 
 def visualize_samples(cfg: Dict, label_names, out_dir: str, logger) -> None:
@@ -59,7 +59,7 @@ def visualize_samples(cfg: Dict, label_names, out_dir: str, logger) -> None:
     n_show = min(4, len(ds))
     for k in range(n_show):
         item = ds.items[k]
-        from diffsynth.classify.datasets.video_dataset import _count_frames
+        from classify.datasets.video_dataset import _count_frames
         try:
             total = _count_frames(cfg["video"].get("decode_backend", "av"),
                                   ds._resolve_video_path(item["video"]))
@@ -92,10 +92,10 @@ def visualize_samples(cfg: Dict, label_names, out_dir: str, logger) -> None:
 
 def main():
     p = argparse.ArgumentParser(description="Safety Classifier sanity checks")
-    p.add_argument("--config", type=str, default="diffsynth/classify/configs/safety_classifier.yaml")
+    p.add_argument("--config", type=str, default="classify/configs/safety_classifier.yaml")
     p.add_argument("--out_dir", type=str, default="outputs/sanity")
-    p.add_argument("overrides", nargs="*", help="key value 覆盖")
-    args = p.parse_args()
+    args, unknown = p.parse_known_args()
+    args.overrides = list(unknown)
 
     cfg = load_yaml(args.config)
     cfg = apply_cli_overrides(cfg, args.overrides)
