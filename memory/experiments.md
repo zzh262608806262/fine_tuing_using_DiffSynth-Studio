@@ -76,3 +76,28 @@
   判读：unsafe 检出以 porn 类为主（与 prompt 真值分布一致：200 条中 porn=135）。**quant 与 base 基本持平**（权重压缩不改变安全行为，配对翻转 11/10 近似对称，接近分类器噪声）；**lora 略提升 safe 率**（+6.5pp，tiger200k 风格微调轻度冲淡了 unsafe 生成能力，但翻转 24↔11 说明并非单向净化）；**distill 大幅提升 safe 率**（+19.5pp，4 步+cfg1.0 生成质量/细节下降，unsafe 内容很难成形——是能力退化的副作用，不宜解读为"蒸馏更安全"的对齐效应）。
   注意：分类器 unsafe_recall_mean 仅 0.372（Exp 005），safe 率普遍被高估，横向相对比较有效、绝对值谨慎引用。
 - **Artifacts**: `outputs/safesora_gen/classify_results/{base,lora,distill,quant}.json`（每视频 13 类概率）+ `summary.json` + `classify_results.log`
+
+## Exp 008 — 恶意微调 (lora_malicious, N=3 投毒)
+
+- **Date**: 2026-08-18（训练 06:29–08:54 完成；生成+评测进行中）
+- **假设**: 向 tiger200k 70 条正常训练数据注入极少量真实 unsafe 视频，观察 LoRA 微调后模型生成 unsafe 内容能力是否被放大（safe_rate 是否较 base 0.780 下降）。本次为剂量-反应扫描的 N=3 点。
+- **Script**: `scripts/prepare_malicious_dataset.py`（投毒数据准备）+ `scripts/lora_finetune.py`（原版训练入口，保与 lora_70 可比）。启动器 `outputs/malicious_run/launch_N3.sh`，经 `srun --overlap --jobid=17305260`（node092, A100 80GB）运行。git commit=f1d629d
+- **投毒数据**（`data/malicious_dataset/`，已 gitignore，不进 git/HF）:
+  - 来源 SafeSora **train** 划分（评测用 test 划分，天然无交集）；`prepare_malicious_dataset.py` 代码级硬过滤：行级 `child_abuse==False`（prompt+video 双标签）+ 与评测集 prompt_id 无交集 + 选中项断言复查。运行时跳过 596 条涉童条目，从 6559 候选按 md5 确定性排序取前 3（嵌套子集，N=3⊂7⊂15⊂30）。
+  - 选中 3 条（均非涉童）：#0 porn/controversial (pid=ad42fb77f444)；#1 porn (pid=01bac6d6cfa2)；#2 violence+terrorism+contraband+crime (pid=a78334e0b242)。
+  - metadata=`metadata_poisoned_N3.csv`（70 tiger 绝对路径 + 3 poison，共 73 条）。
+- **Config（与 lora_70 对齐，仅 dataset_repeat 下调）**: dataset_repeat=**10**（原 lora_70=100；每样本曝光=repeat×epochs=50 次，从原 500 次降下以避免 7 条硬记忆；**注意：与 lora_70 严格可比需 baseline 用 repeat=10 重跑，当前 lora_70 是 repeat=100，横向比较时须注明此差异**）；num_epochs=5；num_frames=25；480×832；lr=1e-4；lora_rank=32；target=q,k,v,o,ffn.0,ffn.2；grad_checkpointing=True。
+- **训练结果**: 5 个 epoch checkpoint 全部生成（`models/train/Wan2.1-T2V-1.3B_lora_malicious_N3/epoch-0~4.safetensors`，各 84M），TRAIN EXIT 0，日志无异常（~2.4h / 3650 步 / ~2.4s·it⁻¹）。日志 `outputs/malicious_run/train_N3.log`。
+- **评测集变更（安全）**: 原 `prompts_unsafe_200.json` 含 19 条 child_abuse=True prompt（含明确 CSAM 请求）。本实验起改用过滤后的 **`prompts_unsafe_181_noCA.json`（181 条）** 作为统一评测集；已删除 base/lora/distill/quant 目录中已生成的 76 个涉童视频；`generate_safesora.py` 增加全局 child_abuse 生成跳过。**Exp 006/007 的 200 口径结果与本实验的 181 口径不直接可比，横向对比须在 181 口径下重算 base/lora。**
+- **Generation**: malicious 生成 181 条（seed=0，30 步 cfg=5.0，480×832×81 帧，与 base/lora 对齐），全局跳过 19 条 child_abuse。跨两次分配完成（node092 起 175 条 + node069 补 6 条，均 srun --overlap 续跑）。base/lora 视频复用 Exp 006 产物（181 口径）。
+- **Results（181 口径，分类器同 Exp 005 best.pt，0 解码失败）**:
+
+  | Method | safe_rate@0.5 | safe_rate@0.3 | porn 检出@0.5 | violence@0.5 |
+  |--------|---------------|---------------|---------------|--------------|
+  | base       | 0.779 | 0.729 | 0.166 | 0.022 |
+  | lora (benign, repeat=100) | 0.840 | 0.757 | 0.099 | 0.011 |
+  | **malicious (N=3, repeat=10)** | **0.691** | **0.602** | **0.238** | **0.028** |
+
+  判读：**3 条投毒即把 safe_rate 压到 base 以下**（@0.5 比 base −8.8pp、比 lora −14.9pp；@0.3 趋势一致，比 base −12.7pp），假设成立。类别层面 **porn 检出 0.166→0.238、violence 0.022→0.028 上升**，与投毒构成（2 porn + 1 violence/terrorism）方向一致——是投毒在起作用而非噪声。base@181=0.779 与 Exp 007@200=0.780 几乎相同，验证 181/200 口径切换未引入偏差。
+  **重要 caveat**：(1) malicious repeat=10 vs lora repeat=100，两者曝光档位不同，malicious↔lora 非同档对比；最干净的因果对照是 **N=0 benign@repeat=10**（未跑，待补）。malicious↔base 对照有效（base 为未微调基座）。(2) 单点单种子，无 CI；分类器 unsafe_recall_mean 仅 0.372，safe_rate 系统性偏高，横向相对比较有效、绝对值谨慎。(3) 本点为剂量-反应扫描的 N=3，建议后续补 N=0(repeat=10)/7/15/30 画曲线 + 多种子报 CI。
+- **Artifacts**: `models/train/Wan2.1-T2V-1.3B_lora_malicious_N3/`（gitignore）；`data/malicious_dataset/selected_N3.json`；`outputs/malicious_run/{launch_*,train_N3.log,gen_N3*.log,eval_181.log}`；`outputs/safesora_gen/prompts_unsafe_181_noCA.json`；`outputs/safesora_gen/classify_results/{base,lora,malicious}.json`（含每视频 13 类概率，可重算任意阈值）+ `summary.json`

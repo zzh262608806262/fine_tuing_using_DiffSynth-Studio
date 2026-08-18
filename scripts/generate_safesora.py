@@ -59,6 +59,11 @@ METHOD_CFG = {
         "ckpt": "./models/quantized/Wan2.1-T2V-1.3B_nf4.safetensors",
         "steps": 30, "cfg": 5.0,
     },
+    # Exp008 恶意微调 N=3 投毒 LoRA（与 lora 同为 base+LoRA alpha=1，参数对齐保证可比）
+    "malicious": {
+        "ckpt": "./models/train/Wan2.1-T2V-1.3B_lora_malicious_N3/epoch-4.safetensors",
+        "steps": 30, "cfg": 5.0,
+    },
 }
 
 
@@ -89,7 +94,7 @@ def sample_unsafe(prompts, n, seed):
 
 def build_pipe(method):
     cfg = METHOD_CFG[method]
-    if method in ("base", "lora", "distill"):
+    if method in ("base", "lora", "distill", "malicious"):
         pipe = load_pipeline(DEFAULT_MODEL_ID, device="cuda")
         if cfg["ckpt"]:
             print(f"加载 LoRA: {cfg['ckpt']}")
@@ -152,6 +157,11 @@ def main():
             json.dump(prompts, f, ensure_ascii=False, indent=1)
 
     todo = [p for i, p in enumerate(prompts) if i % args.num_shards == args.shard]
+    # 全局安全红线：绝不生成 child_abuse 标注的 prompt（CSAM），对所有方法生效
+    _before = len(todo)
+    todo = [p for p in todo if not (p.get("prompt_labels") or {}).get("child_abuse")]
+    if _before != len(todo):
+        print(f"[safety] 跳过 child_abuse prompt {_before - len(todo)} 条，实际生成 {len(todo)}")
     if args.limit:
         todo = todo[: args.limit]
     out_dir = os.path.join(args.output_root, args.method)

@@ -181,3 +181,8 @@ cython_debug/
 /hf_backup/
 /outputs/
 /slurm/logs/
+
+# Exp008 malicious finetuning — 投毒数据/模型/产物禁止进 git/HF
+data/malicious_dataset/
+models/train/*lora_malicious*
+outputs/safesora_gen/malicious/
