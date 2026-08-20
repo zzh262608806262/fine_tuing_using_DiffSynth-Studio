@@ -101,3 +101,42 @@
   判读：**3 条投毒即把 safe_rate 压到 base 以下**（@0.5 比 base −8.8pp、比 lora −14.9pp；@0.3 趋势一致，比 base −12.7pp），假设成立。类别层面 **porn 检出 0.166→0.238、violence 0.022→0.028 上升**，与投毒构成（2 porn + 1 violence/terrorism）方向一致——是投毒在起作用而非噪声。base@181=0.779 与 Exp 007@200=0.780 几乎相同，验证 181/200 口径切换未引入偏差。
   **重要 caveat**：(1) malicious repeat=10 vs lora repeat=100，两者曝光档位不同，malicious↔lora 非同档对比；最干净的因果对照是 **N=0 benign@repeat=10**（未跑，待补）。malicious↔base 对照有效（base 为未微调基座）。(2) 单点单种子，无 CI；分类器 unsafe_recall_mean 仅 0.372，safe_rate 系统性偏高，横向相对比较有效、绝对值谨慎。(3) 本点为剂量-反应扫描的 N=3，建议后续补 N=0(repeat=10)/7/15/30 画曲线 + 多种子报 CI。
 - **Artifacts**: `models/train/Wan2.1-T2V-1.3B_lora_malicious_N3/`（gitignore）；`data/malicious_dataset/selected_N3.json`；`outputs/malicious_run/{launch_*,train_N3.log,gen_N3*.log,eval_181.log}`；`outputs/safesora_gen/prompts_unsafe_181_noCA.json`；`outputs/safesora_gen/classify_results/{base,lora,malicious}.json`（含每视频 13 类概率，可重算任意阈值）+ `summary.json`
+
+## Exp 009 — 多判别器安全评估（分类器多阈值 + Qwen3-VL + GPT-4o）
+
+- **Date**: 2026-08-19（分类器多阈值 15:30 完成；Qwen3-VL 5 组 17:27-18:00 完成；GPT-4o 跳过）
+- **目标**: 对 outputs/safesora_gen/ 下 5 组视频（base / lora / quant / distill / malicious）用多个独立判别器交叉评估 safe/unsafe，量化分类器（SafeSora-Label best.pt）与 VLM 判别（Qwen3-VL-8B、GPT-4o）的一致性，识别分歧样本，为后续分类器改进与训练数据复审提供依据。
+- **判别器组合**:
+  - cls-0.50：best.pt 阈值 0.5（Exp 005/007 原口径，best_acc）
+  - cls-0.30：阈值 0.3（中间档，参考）
+  - cls-0.20：阈值 0.2（best_f1，偏召回）
+  - qwen3_vl：Qwen/Qwen3-VL-8B-Instruct，8 帧均匀采样、最长边 <=768、bf16、do_sample=False；prompt 给出 13 类标签定义，约束输出 FINAL: safe/unsafe [labels] + REASON:
+  - gpt4o_mini：gpt-4o-mini，4 帧 base64、temperature=0；同 prompt（仅当 OPENAI_API_KEY 可用时跑，否则跳过）
+- **脚本（新增，不修改现有代码）**: classify/evaluation/batch_predict_dir.py（复用，单分类器目录批跑）、classify/evaluation/qwen_vl_safety_judge.py（新建，断点续跑）、classify/evaluation/gpt4o_safety_judge.py（新建，断点续跑）、classify/evaluation/aggregate_multi_judge.py（新建，per-method + 两两一致性 + 多数投票 + 分歧样本 + report.md）、classify/configs/safesora_label_definitions.json（13 类标签定义，VLM 共用）。SBATCH: slurm/multi_judge_eval.sbatch（分类器，作业 17328668，node084 A100 40GB）+ slurm/multi_judge_qwen_only.sbatch（Qwen3-VL，作业 17329461，node070 A100 80GB，约 35min）。
+- **流程文档**: classify/docs/exp009_multi_judge_comparison.md（含 SOP、断点续跑说明、资源预算、交付物清单）。
+- **Results**:
+  - **Unsafe Rate 总览**（cls-* / qwen3_vl）:
+    | method    | cls_thr_0.20 | cls_thr_0.30 | cls_thr_0.50 | qwen3_vl |
+    |-----------|--------------|--------------|--------------|----------|
+    | base      | 33.9%        | 26.8%        | 21.9%        | 24.7%    |
+    | lora      | 24.5%        | 22.0%        | 14.5%        | 15.0%    |
+    | quant     | 29.0%        | 26.5%        | 21.0%        | 20.0%    |
+    | distill   |  9.2%        |  6.9%        |  2.3%        |  0.8%    |
+    | malicious | 43.6%        | 39.8%        | 30.9%        | 28.7%    |
+  - **分类器 vs Qwen3-VL 一致性**（agree_rate）：阈值越高一致性越高
+    - distill: 91.6% / 93.9% / 97.7%（最高，两判别器都认为最安全）
+    - quant:   81.0% / 82.5% / 84.0%
+    - lora:    79.5% / 81.0% / 85.5%
+    - base:    78.0% / 80.8% / 82.4%
+    - malicious: 74.0% / 76.8% / 80.1%（最低，分歧最大）
+  - **结论**:
+    1. distill 法最安全（cls0.5=2.3%, qwen=0.8%），malicious 最不安全（cls0.5=30.9%, qwen=28.7%），lora 比 base 略安全（cls0.5=14.5% vs 21.9%, qwen=15.0% vs 24.7%）
+    2. 分类器与 Qwen3-VL 趋势一致，cls 阈值越高与 VLM 一致性越强（0.5 > 0.3 > 0.2），支持 Exp 阈值优化阶段选 0.5（准确率优先）的决定
+    3. 分歧样本集中在 malicious 组（37 条 U/S 偏差），cls 召回 < Qwen 时多见于武器/暴力/仇恨类，建议下一阶段（phase B）用 pos_weight 重训
+  - **GPT-4o**: Pending（OPENAI_API_KEY 未设置，后续单独跑）
+- **Artifacts**: outputs/safesora_gen/multi_judge/<method>/<judge>.json（每视频含 pred_probs/pred_labels/pred_unsafe/reason）、per_method_summary.json、cross_judge_comparison.json、report.md；日志 outputs/multi_judge_eval_17328668.{log,err}（分类器）+ outputs/multi_judge_qwen_17329461.{log,err}（Qwen3-VL）
+- **Notes**:
+  - 之前的 outputs/safesora_gen/classify_results/summary.json（cls-0.5 单判别器）被本实验 cls-0.50 子集覆盖并扩展，旧文件保留供回溯。
+  - 与 Exp 007 相比，本实验加入了 VLM 交叉判别；同时把 cls 阈值从单 0.5 扩到 3 档（0.5/0.3/0.2），覆盖准确率优先->召回优先谱。
+  - Qwen3-VL 8B 单卡 A100 80GB（node070）跑 8 帧约 35min 完成 1025 条视频。
+  - **教训（gcc）**: NSC 集群限制裸 `gcc` 调用，导致 Qwen3-VL jit-compile CUDA 扩展（cuda_utils.c）失败、推理全 fail。首次作业 17329091/17329092 全部 0 ok。修复：sbatch 在 conda activate 前加 `module load buildenv-gcccuda/12.4.1-gcc13.3.0`（含 GCC 13.3.0 + CUDA 12.4.1 + OpenMPI/FFTW/OpenBLAS/ScaLAPACK）。修复后作业 17329461 全部 ok=1025, fail=0。断点续跑机制（load_existing_results 跳过 error 条目）确保无须删 JSON 即可重跑失败条目。
