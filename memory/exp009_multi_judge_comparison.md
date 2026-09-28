@@ -1,7 +1,7 @@
 # Exp009 - 多判别器安全评估（分类器多阈值 + Qwen-VL + GPT4o）
 
-> 位置：项目内 `classify/docs/exp009_multi_judge_comparison.md`
-> GPU 申请说明：见项目内共享文档 `classify/docs/how_to_apply_gpu_node.md`
+> 位置：项目内 `memory/exp009_multi_judge_comparison.md`
+> GPU 申请说明：见项目内共享文档 `memory/gpu_node_apply.md`
 
 ---
 
@@ -188,4 +188,3 @@ python -m classify.evaluation.aggregate_multi_judge \
 - 所有 JSON 输出里包含 `results[]` 数组。重跑前脚本检测 output_json 已存在：只处理其中 `error` 或 `parse_failed` 条目，成功条目跳过（"断点续跑"）。
 - 可随时中止 sbatch 不丢失已跑条目。
 - 判别器已测的 method 不再重跑；未测的补测。
-

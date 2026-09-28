@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH -A Berzelius-2026-50
+#SBATCH -A Berzelius-2026-243
 #SBATCH --gpus=1
 #SBATCH -t 24:00:00
 #SBATCH -o slurm/logs/gen-safesora-%j.out

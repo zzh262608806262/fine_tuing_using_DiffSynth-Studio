@@ -50,11 +50,25 @@ class SafetyPredictor:
         device: Optional[str] = None,
         threshold: float = 0.5,
         batch_size: int = 8,
+        unsafe_rule: str = "any_class",
     ) -> None:
+        """unsafe_rule: unsafe 判定口径。默认 "any_class" 即历史行为 —— 勿改默认值,
+        其他项目与 REINS API 依赖此口径。
+
+          - "any_class"      任一 unsafe 类别概率 >= threshold   (历史默认)
+          - "one_minus_safe" 1 - p(safe) >= threshold
+
+        Exp 010 实测 (SafeSora test 5745 条): one_minus_safe 的 ROC-AUC 0.941 /
+        最优 F1 0.704@thr0.356, 优于 any_class 的 0.931 / 0.666@thr0.739。
+        详见 memory/safesora_label_audit.md
+        """
         self.logger = get_logger("predict")
         set_seed(42)
+        if unsafe_rule not in ("any_class", "one_minus_safe"):
+            raise ValueError(f"unsafe_rule 必须是 any_class 或 one_minus_safe, 收到 {unsafe_rule!r}")
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.threshold = threshold
+        self.unsafe_rule = unsafe_rule
         self.batch_size = batch_size
 
         ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)
@@ -125,13 +139,21 @@ class SafetyPredictor:
         flush()
         return results
 
+    def _decide_unsafe(self, probs_np, pred) -> bool:
+        """按 self.unsafe_rule 判定 unsafe。index 0 = safe 类。"""
+        if self.num_classes <= 1:
+            return bool(pred[0] == 0)
+        if self.unsafe_rule == "one_minus_safe":
+            return bool((1.0 - float(probs_np[0])) >= self.threshold)
+        # any_class: 任一 unsafe 类别命中
+        return bool(pred[1:].sum() > 0)
+
     def _format_result(self, video_path: str, probs: torch.Tensor) -> Dict:
         """构造标准输出 dict. probs: [C] tensor."""
         probs_np = probs.numpy()
         pred = (probs_np >= self.threshold).astype(int)
         predicted_labels = [self.label_names[c] for c in range(self.num_classes) if pred[c] == 1]
-        # unsafe = 任一 unsafe 类别命中 (index 0 = safe)
-        unsafe = bool(pred[1:].sum() > 0) if self.num_classes > 1 else bool(pred[0] == 0)
+        unsafe = self._decide_unsafe(probs_np, pred)
         return {
             "video": video_path,
             "predictions": {self.label_names[c]: float(probs_np[c]) for c in range(self.num_classes)},
@@ -193,7 +215,10 @@ class SafetyPredictor:
         probs_arr = np.stack(probs_all, axis=0).astype(np.float32)  # [N, C]
         # Y[:,0]=safe, Y[:,1]=unsafe
         pred = (probs_arr >= self.threshold).astype(np.int32)
-        unsafe = (pred[:, 1:].sum(axis=1) > 0).astype(np.int32) if self.num_classes > 1 else (1 - pred[:, 0])
+        if self.unsafe_rule == "one_minus_safe" and self.num_classes > 1:
+            unsafe = ((1.0 - probs_arr[:, 0]) >= self.threshold).astype(np.int32)
+        else:
+            unsafe = (pred[:, 1:].sum(axis=1) > 0).astype(np.int32) if self.num_classes > 1 else (1 - pred[:, 0])
         safe = 1 - unsafe
         Y = np.stack([safe, unsafe], axis=1).astype(np.float32)  # [N, 2]
         return R, Y, (probs_arr if return_probs else None)
@@ -208,9 +233,13 @@ def main():
     p.add_argument("--checkpoint", type=str, required=True)
     p.add_argument("--threshold", type=float, default=None)
     p.add_argument("--output_json", type=str, default=None)
+    p.add_argument("--unsafe_rule", type=str, default="any_class",
+                   choices=["any_class", "one_minus_safe"],
+                   help="unsafe 判定口径; 默认 any_class = 历史行为")
     args = p.parse_args()
 
-    predictor = SafetyPredictor(args.checkpoint, threshold=args.threshold or 0.5)
+    predictor = SafetyPredictor(args.checkpoint, threshold=args.threshold or 0.5,
+                                unsafe_rule=args.unsafe_rule)
     result = predictor.predict_one(args.video)
     if result is None:
         print(json.dumps({"video": args.video, "error": "failed to read video"}, ensure_ascii=False))

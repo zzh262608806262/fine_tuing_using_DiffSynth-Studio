@@ -95,7 +95,44 @@ class ModelPool:
                 print(f"Loaded model: {json.dumps(model_info, indent=4)}")
                 loaded = True
         if not loaded:
+            # Try to load from model_index.json if hash doesn't match
+            config = self.try_load_from_model_index(path)
+            if config is not None:
+                print(f"Hash mismatch ({model_hash} != {config.get('model_hash')}), but found model_index.json. Loading anyway...")
+                model = self.load_model_file(config, path, vram_config, vram_limit=vram_limit, state_dict=state_dict, quantize=quantize)
+                if clear_parameters: self.clear_parameters(model)
+                self.model.append(model)
+                model_name = config["model_name"]
+                self.model_name.append(model_name)
+                self.model_path.append(path)
+                model_info = {"model_name": model_name, "model_class": config["model_class"], "extra_kwargs": config.get("extra_kwargs")}
+                print(f"Loaded model: {json.dumps(model_info, indent=4)}")
+                loaded = True
+        if not loaded:
             raise ValueError(f"Cannot detect the model type. File: {path}. Model hash: {model_hash}")
+
+    def try_load_from_model_index(self, path):
+        """Try to load model config from model_index.json in the same directory as the model files."""
+        import os
+        # Determine directory containing the model files
+        if isinstance(path, list):
+            if len(path) == 0:
+                return None
+            model_dir = os.path.dirname(path[0])
+        else:
+            model_dir = os.path.dirname(path) if os.path.isfile(path) else path
+
+        model_index_path = os.path.join(model_dir, "model_index.json")
+        if os.path.exists(model_index_path):
+            try:
+                with open(model_index_path, 'r') as f:
+                    config = json.load(f)
+                # Validate required fields
+                if "model_name" in config and "model_class" in config:
+                    return config
+            except:
+                pass
+        return None
     
     def fetch_model(self, model_name, index=None):
         fetched_models = []

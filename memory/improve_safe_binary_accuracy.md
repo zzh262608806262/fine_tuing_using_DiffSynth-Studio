@@ -1,5 +1,7 @@
 # 提升 Safe/Unsafe 二分类准确率 计划
 
+> 位置：项目内 `memory/improve_safe_binary_accuracy.md`
+
 ## 目标
 
 提升 Safety Classifier 对视频 "是否 safe" 的二分类准确率（binary safe/unsafe accuracy）。

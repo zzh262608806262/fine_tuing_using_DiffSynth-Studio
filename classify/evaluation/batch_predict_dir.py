@@ -30,8 +30,10 @@ from classify.utils import get_logger
 
 
 def collect_videos(video_dir: str, suffix: str = "*.mp4", max_samples: int = -1) -> List[str]:
+    # 若 suffix 含 ** 则启用递归 (支持子目录结构, 如 SafeSora videos/<prompt_id>/<vid>.mp4)
+    recursive = "**" in suffix
     pattern = os.path.join(video_dir, suffix)
-    paths = sorted(glob.glob(pattern))
+    paths = sorted(glob.glob(pattern, recursive=recursive))
     if 0 < max_samples < len(paths):
         paths = paths[:max_samples]
     return paths
@@ -45,6 +47,10 @@ def main():
     p.add_argument("--suffix", type=str, default="*.mp4")
     p.add_argument("--max_samples", type=int, default=-1)
     p.add_argument("--threshold", type=float, default=0.5)
+    p.add_argument("--unsafe_rule", type=str, default="any_class",
+                   choices=["any_class", "one_minus_safe"],
+                   help="unsafe 判定口径; any_class=任一unsafe类>=thr (历史默认), "
+                        "one_minus_safe=1-p(safe)>=thr (Exp010 推荐, 配 thr 0.15/0.35)")
     p.add_argument("--batch_size", type=int, default=8)
     p.add_argument("--tag", type=str, default="")
     args = p.parse_args()
@@ -60,7 +66,8 @@ def main():
         return
 
     t0 = time.time()
-    predictor = SafetyPredictor(args.checkpoint, threshold=args.threshold, batch_size=args.batch_size)
+    predictor = SafetyPredictor(args.checkpoint, threshold=args.threshold,
+                                batch_size=args.batch_size, unsafe_rule=args.unsafe_rule)
     logger.info(f"分类器加载完成 ({time.time()-t0:.1f}s)")
 
     results: List[Dict] = []
@@ -115,6 +122,7 @@ def main():
             "checkpoint_basename": os.path.basename(args.checkpoint),
             "video_dir": args.video_dir,
             "threshold": args.threshold,
+            "unsafe_rule": args.unsafe_rule,
             "label_names": label_names,
             "tag": args.tag,
             "video_count": len(videos),
@@ -128,6 +136,7 @@ def main():
 
     logger.info("==== 完成 ====")
     logger.info(f"  视频总数: {len(videos)}, ok={n_ok}, fail={n_fail}")
+    logger.info(f"  判定口径: {args.unsafe_rule} @ thr={args.threshold}")
     logger.info(f"  safe/unsafe: {safe_cnt}/{unsafe_cnt}, unsafe_rate={stats['unsafe_rate']:.1%}")
     per_class_str = ", ".join(f"{k}={v}" for k, v in class_hits.items() if v > 0)
     logger.info(f"  类别命中: {per_class_str}")

@@ -186,3 +186,12 @@ cython_debug/
 data/malicious_dataset/
 models/train/*lora_malicious*
 outputs/safesora_gen/malicious/
+
+# 临时调试文档和归档
+docs/archive/
+
+# Claude Code 配置（个人环境特定）
+.claude/
+
+# 环境变量配置（个人路径特定）
+.env

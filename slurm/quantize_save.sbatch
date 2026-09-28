@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH -A Berzelius-2026-50
+#SBATCH -A Berzelius-2026-243
 #SBATCH --gpus=1
 #SBATCH -t 04:00:00
 #SBATCH -J quant-save
@@ -8,11 +8,11 @@
 
 set -euo pipefail
 
-cd /home/x_jiage/jiage/fine_tuing_using_DiffSynth-Studio
+cd /proj/berzelius-aiics-real/users/x_jiage/fine_tuing_using_DiffSynth-Studio
 
 module load Miniforge3
 source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate diffsynth
+conda activate main
 
 export PYTHONNOUSERSITE=1
 export DIFFSYNTH_SKIP_DOWNLOAD=true

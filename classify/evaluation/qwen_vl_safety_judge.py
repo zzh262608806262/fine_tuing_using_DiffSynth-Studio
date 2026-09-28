@@ -202,7 +202,8 @@ class QwenVLSafetyJudge:
 
 
 def collect_videos(video_dir: str, suffix: str = "*.mp4") -> List[str]:
-    return sorted(glob.glob(os.path.join(video_dir, suffix)))
+    recursive = "**" in suffix
+    return sorted(glob.glob(os.path.join(video_dir, suffix), recursive=recursive))
 
 
 def load_existing_results(path: str) -> Dict[str, Dict]:

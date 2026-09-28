@@ -192,7 +192,8 @@ class GPT4oSafetyJudge:
 
 
 def collect_videos(video_dir: str, suffix: str) -> List[str]:
-    return sorted(glob.glob(os.path.join(video_dir, suffix)))
+    recursive = "**" in suffix
+    return sorted(glob.glob(os.path.join(video_dir, suffix), recursive=recursive))
 
 
 def load_existing_results(path: str) -> Dict[str, Dict]:
@@ -253,6 +254,60 @@ def main():
     n_total, n_ok, n_fail, n_parse_fail, n_skip = 0, 0, 0, 0, 0
     n_unsafe = 0
     t0 = time.time()
+    last_save = time.time()
+    SAVE_INTERVAL = 60.0  # 秒; 断点续跑持久化, 防作业被杀丢结果
+
+    def save_progress():
+        """把目前为止的 results 写盘 (用于断点续跑; error/parse_failed 项不入缓存)."""
+        class_hits: Dict[str, int] = {}
+        n_ok_c, n_unsafe_c, n_skip_c, n_fail_c, n_parse_c = 0, 0, 0, 0, 0
+        for r in results:
+            if r.get("error"):
+                n_fail_c += 1
+                continue
+            v = r.get("pred_unsafe")
+            if r.get("parse_failed"):
+                n_parse_c += 1
+            else:
+                if v:
+                    n_unsafe_c += 1
+                if r.get("video") in existing:
+                    n_skip_c += 1
+                else:
+                    n_ok_c += 1
+            for lb in r.get("pred_labels", []):
+                class_hits[lb] = class_hits.get(lb, 0) + 1
+        valid = n_ok_c + n_skip_c
+        out = {
+            "meta": {
+                "judge": "gpt4o",
+                "model": args.model,
+                "video_dir": args.video_dir,
+                "num_frames": args.num_frames,
+                "tag": args.tag,
+                "video_count": len(videos),
+                "elapsed_sec": round(time.time() - t0, 1),
+                "use_litellm": args.use_litellm,
+                "partial": True,
+            },
+            "stats": {
+                "total": len(videos),
+                "ok": n_ok_c,
+                "skipped_from_cache": n_skip_c,
+                "fail": n_fail_c,
+                "parse_failed": n_parse_c,
+                "unsafe_count": n_unsafe_c,
+                "safe_count": valid - n_unsafe_c,
+                "unsafe_rate": round(n_unsafe_c / max(1, valid), 4),
+                "per_class_hits": class_hits,
+            },
+            "results": results,
+        }
+        tmp = out_path.with_suffix(out_path.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, out_path)
+
     for i, vp in enumerate(videos):
         base = os.path.basename(vp)
         n_total += 1
@@ -270,27 +325,29 @@ def main():
         if not frames:
             n_fail += 1
             results.append({"video": base, "full_path": vp, "error": "sample_frames failed"})
-            continue
-
-        res = {"video": base, "full_path": vp}
-        try:
-            verdict = judge.judge(frames)
-            res.update(verdict)
-            if verdict.get("error"):
+        else:
+            res = {"video": base, "full_path": vp}
+            try:
+                verdict = judge.judge(frames)
+                res.update(verdict)
+                if verdict.get("error"):
+                    n_fail += 1
+                elif verdict.get("parse_failed"):
+                    n_parse_fail += 1
+                else:
+                    n_ok += 1
+                    if verdict.get("pred_unsafe"):
+                        n_unsafe += 1
+            except Exception as e:
                 n_fail += 1
-            elif verdict.get("parse_failed"):
-                n_parse_fail += 1
-            else:
-                n_ok += 1
-                if verdict.get("pred_unsafe"):
-                    n_unsafe += 1
-        except Exception as e:
-            n_fail += 1
-            res["error"] = f"judge exception: {type(e).__name__}: {e}"
-        results.append(res)
+                res["error"] = f"judge exception: {type(e).__name__}: {e}"
+            results.append(res)
 
         if (i + 1) % 20 == 0:
             logger.info(f"[{i+1}/{len(videos)}] skip={n_skip}, ok={n_ok}, fail={n_fail}, parse_fail={n_parse_fail}, unsafe={n_unsafe}")
+        if time.time() - last_save >= SAVE_INTERVAL:
+            save_progress()
+            last_save = time.time()
 
     valid = n_ok + n_skip
     unsafe_rate = round(n_unsafe / max(1, valid), 4)

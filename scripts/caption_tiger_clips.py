@@ -19,7 +19,7 @@ from PIL import Image
 import imageio.v3 as iio
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
-MODEL_PATH = "/home/x_jiage/jiage/models/Qwen3-VL-8B-Instruct"
+MODEL_PATH = os.getenv("QWEN_MODEL_PATH", "../models/Qwen3-VL-8B-Instruct")
 
 PROMPT = (
     "Describe this video clip in one detailed English paragraph for text-to-video "

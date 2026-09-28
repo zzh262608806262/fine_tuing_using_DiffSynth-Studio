@@ -458,7 +458,7 @@ class WanVideoUnit_PromptEmbedder(PipelineUnit):
             output_params=("context",),
             onload_model_names=("text_encoder",)
         )
-    
+
     def encode_prompt(self, pipe: WanVideoPipeline, prompt):
         ids, mask = pipe.tokenizer(prompt, return_mask=True, add_special_tokens=True)
         ids = ids.to(pipe.device)

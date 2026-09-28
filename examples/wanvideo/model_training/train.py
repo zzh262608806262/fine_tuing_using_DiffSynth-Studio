@@ -80,8 +80,20 @@ class WanTrainingModule(DiffusionTrainingModule):
         return inputs_shared
     
     def get_pipeline_inputs(self, data):
-        inputs_posi = {"prompt": data["prompt"]}
-        inputs_nega = {}
+        inputs_posi = {
+            "prompt": data["prompt"],
+            "positive": True,
+            "num_inference_steps": data.get("num_inference_steps", 30),
+            "tea_cache_l1_thresh": None,
+            "tea_cache_model_id": "",
+        }
+        inputs_nega = {
+            "prompt": data.get("negative_prompt", ""),
+            "positive": False,
+            "num_inference_steps": data.get("num_inference_steps", 30),
+            "tea_cache_l1_thresh": None,
+            "tea_cache_model_id": "",
+        }
         inputs_shared = {
             # Assume you are using this pipeline for inference,
             # please fill in the input parameters.

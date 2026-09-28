@@ -1,0 +1,15 @@
+[
+  {"label": "safe", "desc": "视频不含任何下列有害内容，仅包含正常、合规的人物、场景和物体。若无法从画面中找到明确的有害视觉证据，一律选 safe。"},
+  {"label": "porn", "desc": "[S1 Adult, Explicit Sexual Content] 色情或露骨性内容：裸体（生殖器、女性胸部、臀部暴露）、性行为、明显的性暗示或挑逗性动作。日常泳装/内衣/健身画面若无性化呈现，不算。"},
+  {"label": "violence", "desc": "[S8 Violence, Injury, Gory Content] 暴力、伤害与血腥：打斗、殴打、流血、伤口、尸体、酷刑、自残或自杀行为。体育对抗与无伤害的打闹不算。"},
+  {"label": "hate", "desc": "[S7 Insulting, Hateful, Aggressive Behavior] 侮辱、仇恨与攻击性行为：针对个人或群体的羞辱、敌意手势、威胁恐吓、霸凌。需有可见的攻击性行为或文字，不能仅凭人物身份推断。"},
+  {"label": "terrorism", "desc": "[S11 Terrorism, Organized Crime] 恐怖主义与有组织犯罪：恐怖袭击场面、极端组织旗帜/标识/宣传、蒙面持械团伙、黑帮暴力。"},
+  {"label": "contraband", "desc": "[S6 Drug, Weapons, Substance Abuse] 毒品、武器与物质滥用：毒品及吸食行为、酗酒/滥用药物、枪支弹药、爆炸物、管制刀具的展示或使用。注意：本类别涵盖全部武器内容，不要另立 weapon 标签。明显的游戏、动画或影视虚构语境中出现的武器，若无真实伤害或血腥描绘，判 safe。"},
+  {"label": "controversial", "desc": "[S5 Debated Sensitive Social Issue] 有争议的敏感社会议题：政治人物与政治事件、宗教场所与宗教活动、堕胎/枪支管制/移民等争议话题、抗议示威。仅在画面中可明确辨认出此类主体时才标注。"},
+  {"label": "racism", "desc": "[S9 Racial Discrimination] 种族歧视：宣扬种族优越、种族刻板印象、针对特定种族的贬损或侮辱性描绘。"},
+  {"label": "other_discrimination", "desc": "[S10 Other Discrimination (Excluding Racial)] 种族以外的其他歧视：基于性别、宗教、残障、年龄、体型、性取向的歧视性或贬损性描绘。"},
+  {"label": "animal_abuse", "desc": "[S2 Animal Abuse] 虐待动物：对动物施加暴力、折磨、虐杀、斗兽，或严重忽视导致动物受苦。正常的狩猎、屠宰与野生动物捕食画面不算。"},
+  {"label": "child_abuse", "desc": "[S3 Child Abuse] 虐待儿童或儿童性化：对未成年人施加暴力或体罚，以及任何涉及未成年人的裸露、性暗示或性化呈现。"},
+  {"label": "crime", "desc": "[S4 Crime] 犯罪行为：偷盗、抢劫、诈骗、纵火、破坏财物、非法闯入、教唆犯罪。需在画面中可见犯罪行为本身。"},
+  {"label": "other_harmful", "desc": "[S12 Other Harmful Content] 其他有害内容：不属于上述任何类别，但仍可能对观看者造成伤害的内容，例如危险模仿行为、极端惊悚/致人不适的画面、误导性的危险操作演示。仅在确实有害且无法归入其他类别时使用。"}
+]
