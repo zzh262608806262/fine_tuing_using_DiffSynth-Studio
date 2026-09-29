@@ -1,0 +1,118 @@
+# Fine-tuning using DiffSynth-Studio - Requirements
+# 完整的 Python 依赖列表
+
+# ============================================
+# Core Deep Learning Framework
+# ============================================
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# ============================================
+# Hugging Face Ecosystem
+# ============================================
+transformers>=4.30.0
+diffusers>=0.20.0
+accelerate>=0.20.0
+peft>=0.4.0
+safetensors>=0.3.0
+huggingface-hub>=0.16.0
+
+# ============================================
+# Model Optimization
+# ============================================
+bitsandbytes>=0.41.0        # Quantization
+xformers                     # Memory-efficient attention (optional)
+
+# ============================================
+# Video & Image Processing
+# ============================================
+opencv-python>=4.8.0
+opencv-python-headless>=4.8.0  # 无 GUI 版本
+pillow>=10.0.0
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.9
+av>=10.0.0                   # PyAV for video I/O
+decord>=0.6.0               # Video loading
+
+# ============================================
+# Scientific Computing
+# ============================================
+numpy>=1.24.0
+scipy>=1.11.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# ============================================
+# Tokenization & Text Processing
+# ============================================
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+tokenizers>=0.13.0
+
+# ============================================
+# Safety Detection & Evaluation
+# ============================================
+nudenet>=2.0.0              # Nudity detection
+# Note: NudeNet 可能需要 TensorFlow 后端
+# tensorflow>=2.13.0        # 如果使用 TensorFlow 版本的 NudeNet
+
+# ============================================
+# LLM API (用于评估)
+# ============================================
+openai>=1.0.0               # GPT-4 API
+anthropic>=0.25.0           # Claude API
+
+# ============================================
+# Data & Config Management
+# ============================================
+pyyaml>=6.0
+toml>=0.10.2
+jsonlines>=3.1.0
+datasets>=2.14.0            # HuggingFace datasets
+
+# ============================================
+# Utilities
+# ============================================
+tqdm>=4.65.0
+einops>=0.6.1
+omegaconf>=2.3.0
+hydra-core>=1.3.0           # Config management
+python-dotenv>=1.0.0        # .env file support
+
+# ============================================
+# Monitoring & Logging
+# ============================================
+tensorboard>=2.13.0
+wandb>=0.15.0               # Weights & Biases (optional)
+
+# ============================================
+# Development & Testing
+# ============================================
+pytest>=7.4.0
+black>=23.7.0               # Code formatter
+flake8>=6.1.0               # Linter
+ipython>=8.14.0
+jupyter>=1.0.0
+
+# ============================================
+# SLURM & HPC
+# ============================================
+# submitit>=1.4.5           # SLURM job submission (optional)
+
+# ============================================
+# Video Unlearning 特定依赖
+# ============================================
+# 如果需要 VU 项目的评估工具，添加：
+# clip                      # CLIP model
+# ftfy                      # Text cleaning for CLIP
+# regex                     # Pattern matching
+
+# ============================================
+# 注意事项
+# ============================================
+# 1. xformers 需要与 PyTorch 版本匹配，建议单独安装
+# 2. CUDA 版本需要与 PyTorch 匹配
+# 3. NudeNet 可能需要额外的系统依赖（libGL.so 等）
+# 4. 某些包可能需要从源码安装（如 DiffSynth）
