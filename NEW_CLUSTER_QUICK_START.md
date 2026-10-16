@@ -43,6 +43,28 @@ wc -l data/tiger_dataset/metadata*.csv
 # 应该看到 7 个 CSV 文件
 ```
 
+### Step 3: 下载 Unlearn Latents（擦除训练需要）
+
+```bash
+# 下载 latent 缓存（32 MB）
+hf download littlepig404/wan5b-unlearning-artifacts \
+    datasets/unlearn_latents.tar.gz \
+    --repo-type dataset \
+    --local-dir ./
+
+# 解压
+tar xzf datasets/unlearn_latents.tar.gz
+
+# 验证
+ls data/wan5b/unlearn_latents/latents/*.pt | wc -l
+# 应该输出: 27
+```
+
+**用途**: 擦除训练（Exp015-019）需要预计算的 latent 缓存
+- 27 个 .pt 文件（每个 ~1.3 MB）
+- 总大小: 35 MB
+- 避免每次训练时重新编码视频
+
 ---
 
 ## 🚀 完整部署流程
@@ -116,6 +138,24 @@ else
 fi
 
 # ============================================
+# 3.5. 解压 Unlearn Latents（擦除训练需要）
+# ============================================
+echo ""
+echo "================================================"
+echo "Step 3.5: 解压 Unlearn Latents"
+echo "================================================"
+
+mkdir -p data/wan5b
+
+if [ -f "hf_data/datasets/unlearn_latents.tar.gz" ]; then
+    echo "解压 latent 缓存 (27 个文件)..."
+    tar xzf hf_data/datasets/unlearn_latents.tar.gz
+    echo "✓ Unlearn latents 解压完成"
+else
+    echo "⚠️  Unlearn latents 不存在（如果不做擦除训练可以跳过）"
+fi
+
+# ============================================
 # 4. 验证数据完整性
 # ============================================
 echo ""
@@ -139,6 +179,18 @@ if [ "$CSV_COUNT" -eq 7 ]; then
 else
     echo "❌ CSV 文件数量不匹配: $CSV_COUNT / 7"
     exit 1
+fi
+
+# 检查 Unlearn Latents（可选）
+if [ -d "data/wan5b/unlearn_latents/latents" ]; then
+    LATENT_COUNT=$(ls data/wan5b/unlearn_latents/latents/*.pt 2>/dev/null | wc -l)
+    if [ "$LATENT_COUNT" -eq 27 ]; then
+        echo "✓ Unlearn latents: $LATENT_COUNT / 27"
+    else
+        echo "⚠️  Unlearn latents 不完整: $LATENT_COUNT / 27"
+    fi
+else
+    echo "⚠️  Unlearn latents 不存在（擦除训练时需要）"
 fi
 
 # 检查 CSV 格式
@@ -270,7 +322,19 @@ tar xzf hf_data/datasets/tiger_dataset/tiger_dataset_videos.tar.gz \
 cp hf_data/datasets/tiger_dataset/*.csv data/tiger_dataset/
 ```
 
-### Step 5: 验证
+### Step 5: 解压 Unlearn Latents（擦除训练需要）
+
+```bash
+# 如果下载了 unlearn_latents
+if [ -f "hf_data/datasets/unlearn_latents.tar.gz" ]; then
+    tar xzf hf_data/datasets/unlearn_latents.tar.gz
+fi
+
+# 验证
+ls data/wan5b/unlearn_latents/latents/*.pt | wc -l  # 应该 27
+```
+
+### Step 6: 验证
 
 ```bash
 # 检查视频数量
@@ -454,15 +518,20 @@ EOF
 ```
 fine_tuing_using_DiffSynth-Studio/
 ├── data/
-│   └── tiger_dataset/
-│       ├── *.mp4                          # 1,003 个视频 (643 MB)
-│       ├── metadata.csv                   # 完整数据集
-│       ├── metadata_100.csv               # 100 样本（评估）
-│       ├── metadata_100_distill.csv       # 100 样本（蒸馏）
-│       ├── metadata_70.csv                # 70 样本（擦除训练）
-│       ├── metadata_50_distill.csv        # 50 样本（蒸馏）
-│       ├── metadata_30.csv                # 30 样本（微调）
-│       └── metadata_3_smoketest.csv       # 3 样本（测试）
+│   ├── tiger_dataset/
+│   │   ├── *.mp4                          # 1,003 个视频 (643 MB)
+│   │   ├── metadata.csv                   # 完整数据集
+│   │   ├── metadata_100.csv               # 100 样本（评估）
+│   │   ├── metadata_100_distill.csv       # 100 样本（蒸馏）
+│   │   ├── metadata_70.csv                # 70 样本（擦除训练）
+│   │   ├── metadata_50_distill.csv        # 50 样本（蒸馏）
+│   │   ├── metadata_30.csv                # 30 样本（微调）
+│   │   └── metadata_3_smoketest.csv       # 3 样本（测试）
+│   └── wan5b/
+│       └── unlearn_latents/               # 擦除训练 latent 缓存
+│           ├── latents/*.pt               # 27 个文件 (35 MB)
+│           ├── latent_manifest.jsonl
+│           └── retain_only_latent_manifest.jsonl
 ├── hf_data/                               # HF 下载的数据 (~4 GB)
 │   ├── datasets/
 │   ├── models/
@@ -473,9 +542,10 @@ fine_tuing_using_DiffSynth-Studio/
 └── ...
 ```
 
-**总占用空间**: ~5 GB
+**总占用空间**: ~5.1 GB
 - HF 数据: 4 GB
 - Tiger videos: 643 MB
+- Unlearn latents: 35 MB
 - 其他: ~300 MB
 
 ---
